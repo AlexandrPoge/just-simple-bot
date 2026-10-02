@@ -52,6 +52,8 @@ class TelegramApi:
             raise RuntimeError(f"Telegram API вернул HTTP {error.code}") from None
         except urllib.error.URLError:
             raise RuntimeError("Не удалось связаться с Telegram API") from None
+        except TimeoutError:
+            raise RuntimeError("Истекло время ожидания Telegram API") from None
         if not body.get("ok"):
             raise RuntimeError("Telegram API отклонил запрос")
         return body["result"]
