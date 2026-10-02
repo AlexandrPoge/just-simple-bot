@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import sqlite3
 import time
 import urllib.error
 import urllib.parse
@@ -13,6 +14,7 @@ import urllib.request
 from pathlib import Path
 
 from .audit import AuditLog
+from .admin import start_admin
 from .knowledge import FALLBACK, KnowledgeBase, Result
 
 
@@ -77,12 +79,16 @@ def process_message(message: dict, api: TelegramApi, kb: KnowledgeBase, audit: A
         logging.exception("База знаний недоступна или некорректна")
         result = Result(FALLBACK, None, "needs_human")
     api.call("sendMessage", {"chat_id": chat_id, "text": result.answer})
-    audit.record(chat_id, text, result)
+    try:
+        audit.record(chat_id, text, result)
+    except sqlite3.Error:
+        logging.exception("Не удалось записать обращение в журнал")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Проверить токен и соединение, затем выйти")
+    parser.add_argument("--no-admin", action="store_true", help="Запустить без локального редактора")
     args = parser.parse_args()
     load_local_env()
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -96,17 +102,30 @@ def main() -> None:
         return
     kb = KnowledgeBase(path_from_config("KNOWLEDGE_BASE_PATH", "knowledge_base/articles.csv"))
     kb.load()
-    audit = AuditLog(path_from_config("AUDIT_DB_PATH", "data/audit.sqlite3"))
+    audit_path = path_from_config("AUDIT_DB_PATH", "data/audit.sqlite3")
+    audit = AuditLog(audit_path)
+    admin = None
+    if not args.no_admin:
+        port = int(os.environ.get("ADMIN_PORT", "8765"))
+        admin = start_admin(kb.path, audit_path, port)
+        logging.info("Редактор базы знаний: http://127.0.0.1:%s", admin.server_port)
     offset = 0
-    while True:
-        try:
-            updates = api.call("getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": '["message"]'})
-            for update in updates:
-                process_message(update.get("message") or {}, api, kb, audit)
-                offset = update["update_id"] + 1
-        except RuntimeError as error:
-            logging.error("%s", error)
-            time.sleep(3)
+    try:
+        while True:
+            try:
+                updates = api.call("getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": '["message"]'})
+                for update in updates:
+                    process_message(update.get("message") or {}, api, kb, audit)
+                    offset = update["update_id"] + 1
+            except RuntimeError as error:
+                logging.error("%s", error)
+                time.sleep(3)
+    except KeyboardInterrupt:
+        logging.info("Бот остановлен")
+    finally:
+        if admin is not None:
+            admin.shutdown()
+            admin.server_close()
 
 
 if __name__ == "__main__":
