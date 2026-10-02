@@ -15,7 +15,9 @@ from pathlib import Path
 
 from .audit import AuditLog
 from .admin import start_admin
+from .google_sheets import GoogleSheetError, GoogleSheetStore, authorized_session
 from .knowledge import FALLBACK, KnowledgeBase, Result
+from .store import ArticleStore
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,7 +77,7 @@ def process_message(message: dict, api: TelegramApi, kb: KnowledgeBase, audit: A
         return
     try:
         result = kb.answer(text)
-    except (OSError, ValueError):
+    except (OSError, ValueError, GoogleSheetError):
         logging.exception("База знаний недоступна или некорректна")
         result = Result(FALLBACK, None, "needs_human")
     api.call("sendMessage", {"chat_id": chat_id, "text": result.answer})
@@ -100,14 +102,26 @@ def main() -> None:
     logging.info("Подключен бот @%s", bot.get("username"))
     if args.check:
         return
-    kb = KnowledgeBase(path_from_config("KNOWLEDGE_BASE_PATH", "knowledge_base/articles.csv"))
+    sheet_id = os.environ.get("GOOGLE_SHEET_ID", "").strip()
+    if sheet_id:
+        credentials_path = path_from_config("GOOGLE_SERVICE_ACCOUNT_FILE", "credentials/service-account.json")
+        source = GoogleSheetStore(
+            sheet_id,
+            os.environ.get("GOOGLE_SHEET_TAB", "Knowledge"),
+            authorized_session(credentials_path),
+        )
+        logging.info("Источник базы знаний: Google Таблица")
+    else:
+        source = ArticleStore(path_from_config("KNOWLEDGE_BASE_PATH", "knowledge_base/articles.csv"))
+        logging.info("Источник базы знаний: локальный CSV")
+    kb = KnowledgeBase(source)
     kb.load()
     audit_path = path_from_config("AUDIT_DB_PATH", "data/audit.sqlite3")
     audit = AuditLog(audit_path)
     admin = None
     if not args.no_admin:
         port = int(os.environ.get("ADMIN_PORT", "8765"))
-        admin = start_admin(kb.path, audit_path, port)
+        admin = start_admin(source, audit_path, port)
         logging.info("Редактор базы знаний: http://127.0.0.1:%s", admin.server_port)
     offset = 0
     try:

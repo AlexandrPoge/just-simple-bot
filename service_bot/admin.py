@@ -11,7 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from .store import ArticleStore, FIELDS
+from .google_sheets import GoogleSheetError
+from .store import ArticleStore, FIELDS, revision
 
 
 LABELS = {
@@ -50,8 +51,8 @@ textarea{{min-height:90px}}textarea.answer{{min-height:150px}}small{{display:blo
     return markup.encode("utf-8")
 
 
-def create_server(kb_path: Path, audit_path: Path, port: int = 8765) -> ThreadingHTTPServer:
-    store = ArticleStore(kb_path)
+def create_server(source: Path | object, audit_path: Path, port: int = 8765) -> ThreadingHTTPServer:
+    store = ArticleStore(source) if isinstance(source, Path) else source
     csrf_token = secrets.token_urlsafe(32)
 
     class Handler(BaseHTTPRequestHandler):
@@ -93,7 +94,7 @@ def create_server(kb_path: Path, audit_path: Path, port: int = 8765) -> Threadin
                         self._form(row, article_id)
                 else:
                     self._send(HTTPStatus.NOT_FOUND, page("Не найдено", "<h1>Страница не найдена</h1>"))
-            except (OSError, ValueError, sqlite3.Error) as error:
+            except (OSError, ValueError, sqlite3.Error, GoogleSheetError) as error:
                 self._send(HTTPStatus.INTERNAL_SERVER_ERROR, page("Ошибка", f"<h1>Ошибка</h1><p>{esc(error)}</p>"))
 
         def _index(self, saved: str) -> None:
@@ -159,6 +160,7 @@ def create_server(kb_path: Path, audit_path: Path, port: int = 8765) -> Threadin
                 '<form method="post" action="/articles/save">'
                 f'<input type="hidden" name="csrf" value="{csrf_token}">'
                 f'<input type="hidden" name="original_id" value="{esc(original_id)}">'
+                f'<input type="hidden" name="revision" value="{revision(row) if original_id else ""}">'
                 + "".join(fields) + '<p><button type="submit">Сохранить статью</button></p></form>'
             )
             self._send(HTTPStatus.OK if not error else HTTPStatus.BAD_REQUEST, page(title, content))
@@ -179,20 +181,21 @@ def create_server(kb_path: Path, audit_path: Path, port: int = 8765) -> Threadin
                     return
                 values = {field: fields.get(field, [""])[0] for field in FIELDS}
                 original_id = fields.get("original_id", [""])[0]
+                expected_revision = fields.get("revision", [""])[0]
                 try:
-                    article_id = store.save(values, original_id)
+                    article_id = store.save(values, original_id, expected_revision)
                 except ValueError as error:
                     self._form(values, original_id, str(error))
                     return
                 location = "/?saved=" + quote(article_id)
                 self._send(HTTPStatus.SEE_OTHER, b"", location)
-            except (OSError, ValueError, UnicodeError) as error:
+            except (OSError, ValueError, UnicodeError, GoogleSheetError) as error:
                 self._send(HTTPStatus.BAD_REQUEST, page("Ошибка", f"<h1>Ошибка формы</h1><p>{esc(error)}</p>"))
 
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 
 
-def start_admin(kb_path: Path, audit_path: Path, port: int = 8765) -> ThreadingHTTPServer:
-    server = create_server(kb_path, audit_path, port)
+def start_admin(source: Path | object, audit_path: Path, port: int = 8765) -> ThreadingHTTPServer:
+    server = create_server(source, audit_path, port)
     threading.Thread(target=server.serve_forever, name="knowledge-admin", daemon=True).start()
     return server

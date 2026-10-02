@@ -1,4 +1,4 @@
-"""Strict retrieval of approved answers from an editable CSV knowledge base."""
+"""Strict retrieval of approved answers from the configured knowledge source."""
 
 from __future__ import annotations
 
@@ -63,47 +63,51 @@ class KnowledgeBase:
         "exclude_terms", "question_examples", "answer",
     }
 
-    def __init__(self, path: Path):
-        self.path = path
+    def __init__(self, source: Path | object):
+        self.source = source
 
     def load(self) -> list[Article]:
-        with self.path.open(newline="", encoding="utf-8-sig") as source:
-            reader = csv.DictReader(source)
-            if not reader.fieldnames or not self.REQUIRED.issubset(reader.fieldnames):
-                raise ValueError("В базе знаний отсутствуют обязательные колонки")
-            articles = []
-            seen_ids = set()
-            for row in reader:
-                status = (row["status"] or "").strip().casefold()
-                if status not in {"draft", "published", "archived"}:
-                    raise ValueError("Недопустимый статус статьи")
-                article_id = (row["id"] or "").strip()
-                if not article_id or article_id in seen_ids:
-                    raise ValueError("Пустой или повторяющийся ID статьи")
-                seen_ids.add(article_id)
-                if status != "published":
-                    continue
-                answer = (row["answer"] or "").strip()
-                topic_terms = split_terms(row["topic_terms"] or "")
-                if not answer or not topic_terms:
-                    raise ValueError(f"Опубликованная статья {article_id} неполная")
-                articles.append(
-                    Article(
-                        id=article_id,
-                        equipment_aliases=split_terms(row["equipment_aliases"] or ""),
-                        topic_terms=topic_terms,
-                        exclude_terms=split_terms(row["exclude_terms"] or ""),
-                        question_examples=split_terms(row["question_examples"] or ""),
-                        answer=answer,
-                    )
+        if isinstance(self.source, Path):
+            with self.source.open(newline="", encoding="utf-8-sig") as source:
+                reader = csv.DictReader(source)
+                if not reader.fieldnames or not self.REQUIRED.issubset(reader.fieldnames):
+                    raise ValueError("В базе знаний отсутствуют обязательные колонки")
+                rows = list(reader)
+        else:
+            rows = self.source.all()
+        articles = []
+        seen_ids = set()
+        for row in rows:
+            status = (row["status"] or "").strip().casefold()
+            if status not in {"draft", "published", "archived"}:
+                raise ValueError("Недопустимый статус статьи")
+            article_id = (row["id"] or "").strip()
+            if not article_id or article_id in seen_ids:
+                raise ValueError("Пустой или повторяющийся ID статьи")
+            seen_ids.add(article_id)
+            if status != "published":
+                continue
+            answer = (row["answer"] or "").strip()
+            topic_terms = split_terms(row["topic_terms"] or "")
+            if not answer or not topic_terms:
+                raise ValueError(f"Опубликованная статья {article_id} неполная")
+            articles.append(
+                Article(
+                    id=article_id,
+                    equipment_aliases=split_terms(row["equipment_aliases"] or ""),
+                    topic_terms=topic_terms,
+                    exclude_terms=split_terms(row["exclude_terms"] or ""),
+                    question_examples=split_terms(row["question_examples"] or ""),
+                    answer=answer,
                 )
+            )
         return articles
 
     def answer(self, question: str) -> Result:
         text = normalize(question)
         if not text:
             return Result(FALLBACK, None, "needs_human")
-        articles = self.load()  # Changes in the CSV take effect on the next question.
+        articles = self.load()  # Source changes take effect on the next question.
         candidates = []
         for article in articles:
             if article.equipment_aliases and not any(
