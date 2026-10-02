@@ -16,7 +16,7 @@ from pathlib import Path
 from .audit import AuditLog
 from .admin import start_admin
 from .google_sheets import GoogleSheetError, GoogleSheetStore, authorized_session
-from .knowledge import FALLBACK, KnowledgeBase, Result
+from .knowledge import FALLBACK, KnowledgeBase, Result, normalize
 from .store import ArticleStore
 
 
@@ -59,7 +59,36 @@ class TelegramApi:
         return body["result"]
 
 
-def process_message(message: dict, api: TelegramApi, kb: KnowledgeBase, audit: AuditLog) -> None:
+class DialogState:
+    """Short-lived context used only while awaiting a station model."""
+
+    def __init__(self, ttl_seconds: int = 300):
+        self.ttl_seconds = ttl_seconds
+        self.pending: dict[int, tuple[float, str]] = {}
+
+    def resolve(self, chat_id: int, text: str, kb: KnowledgeBase) -> str:
+        previous = self.pending.pop(chat_id, None)
+        if previous is None or time.monotonic() - previous[0] > self.ttl_seconds:
+            return text
+        reply = normalize(text)
+        for prefix in ("это ", "станция ", "станцию ", "модель "):
+            if reply.startswith(prefix):
+                reply = reply[len(prefix):]
+                break
+        aliases = {
+            alias for article in kb.load() for alias in article.equipment_aliases
+        }
+        return previous[1] + " " + reply if reply in aliases else text
+
+    def remember(self, chat_id: int, text: str) -> None:
+        if len(self.pending) >= 1000:
+            self.pending.clear()
+        self.pending[chat_id] = (time.monotonic(), text)
+
+
+def process_message(
+    message: dict, api: TelegramApi, kb: KnowledgeBase, audit: AuditLog, dialog: DialogState,
+) -> None:
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
     if not isinstance(chat_id, int):
@@ -68,23 +97,29 @@ def process_message(message: dict, api: TelegramApi, kb: KnowledgeBase, audit: A
     if not isinstance(text, str):
         api.call("sendMessage", {"chat_id": chat_id, "text": FALLBACK})
         return
-    command = text.split(maxsplit=1)[0].split("@", 1)[0]
+    command = text.split(maxsplit=1)[0].split("@", 1)[0] if text.split() else ""
     if command == "/start":
+        dialog.pending.pop(chat_id, None)
         api.call("sendMessage", {"chat_id": chat_id, "text": "Здравствуйте! Задайте вопрос по обслуживанию станции. Я отвечаю только по базе знаний сервисного отдела."})
         return
     if command == "/help":
+        dialog.pending.pop(chat_id, None)
         api.call("sendMessage", {"chat_id": chat_id, "text": "Спросите об обслуживании КАН Ультра, периодичности обслуживания КИТ или переполнении станции. Если информации нет, я направлю вас в сервисный отдел."})
         return
     if text.startswith("/"):
         return
+    resolved_question = text
     try:
-        result = kb.answer(text)
+        resolved_question = dialog.resolve(chat_id, text, kb)
+        result = kb.answer(resolved_question)
     except (OSError, ValueError, GoogleSheetError):
         logging.exception("База знаний недоступна или некорректна")
         result = Result(FALLBACK, None, "needs_human")
+    if result.status == "needs_clarification":
+        dialog.remember(chat_id, resolved_question)
     api.call("sendMessage", {"chat_id": chat_id, "text": result.answer})
     try:
-        audit.record(chat_id, text, result)
+        audit.record(chat_id, resolved_question, result)
     except sqlite3.Error:
         logging.exception("Не удалось записать обращение в журнал")
 
@@ -120,6 +155,7 @@ def main() -> None:
     kb.load()
     audit_path = path_from_config("AUDIT_DB_PATH", "data/audit.sqlite3")
     audit = AuditLog(audit_path)
+    dialog = DialogState()
     admin = None
     if not args.no_admin:
         port = int(os.environ.get("ADMIN_PORT", "8765"))
@@ -131,7 +167,7 @@ def main() -> None:
             try:
                 updates = api.call("getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": '["message"]'})
                 for update in updates:
-                    process_message(update.get("message") or {}, api, kb, audit)
+                    process_message(update.get("message") or {}, api, kb, audit, dialog)
                     offset = update["update_id"] + 1
             except RuntimeError as error:
                 logging.error("%s", error)
