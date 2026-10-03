@@ -19,10 +19,18 @@ class FakeResponse:
 
 class FakeSession:
     def __init__(self):
-        self.rows = [list(FIELDS), [
-            "kan", "published", "кан", "почист|обслуж", "как часто",
-            "Как почистить КАН?", "Ссылка на утверждённую инструкцию",
-        ]]
+        self.rows = [
+            list(FIELDS),
+            [
+                "kan",
+                "published",
+                "кан",
+                "почист|обслуж",
+                "как часто",
+                "Как почистить КАН?",
+                "Ссылка на утверждённую инструкцию",
+            ],
+        ]
         self.fail = False
 
     def request(self, method, url, json=None, timeout=None):
@@ -60,21 +68,40 @@ class GoogleSheetsTests(unittest.TestCase):
 
         # A manager edits the same sheet while the local form is still open.
         self.session.rows[1][-1] = "Обновлённый менеджером ответ"
-        self.assertEqual(self.kb.answer("Как почистить КАН?").answer, "Обновлённый менеджером ответ")
+        self.assertEqual(
+            self.kb.answer("Как почистить КАН?").answer, "Обновлённый менеджером ответ"
+        )
         with self.assertRaisesRegex(ValueError, "Обновите страницу"):
-            self.store.save({**current, "answer": "Старый вариант"}, "kan", original_revision)
+            self.store.save(
+                {**current, "answer": "Старый вариант"}, "kan", original_revision
+            )
 
         fresh = self.store.all()[0]
-        self.store.save({**fresh, "question_examples": fresh["question_examples"] + "|Нужен ролик для КАН"}, "kan", revision(fresh))
-        self.assertEqual(self.kb.answer("Нужен ролик для КАН").answer, "Обновлённый менеджером ответ")
+        self.store.save(
+            {
+                **fresh,
+                "question_examples": fresh["question_examples"]
+                + "|Нужен ролик для КАН",
+            },
+            "kan",
+            revision(fresh),
+        )
+        self.assertEqual(
+            self.kb.answer("Нужен ролик для КАН").answer, "Обновлённый менеджером ответ"
+        )
 
     def test_new_article_is_added_to_sheet(self):
-        self.store.save({
-            "id": "kit", "status": "published", "equipment_aliases": "кит",
-            "topic_terms": "част|периодич", "exclude_terms": "",
-            "question_examples": "Как часто обслуживать КИТ?",
-            "answer": "Рекомендуем проводить обслуживание станции КИТ один раз в год.",
-        })
+        self.store.save(
+            {
+                "id": "kit",
+                "status": "published",
+                "equipment_aliases": "кит",
+                "topic_terms": "част|периодич",
+                "exclude_terms": "",
+                "question_examples": "Как часто обслуживать КИТ?",
+                "answer": "Рекомендуем проводить обслуживание станции КИТ один раз в год.",
+            }
+        )
         self.assertEqual(self.kb.answer("Как часто обслуживать КИТ?").article_id, "kit")
 
     def test_source_failure_never_uses_stale_csv(self):

@@ -13,24 +13,34 @@ from pathlib import Path
 
 from .knowledge import KnowledgeBase
 
-
 FIELDS = (
-    "id", "status", "equipment_aliases", "topic_terms", "exclude_terms",
-    "question_examples", "answer",
+    "id",
+    "status",
+    "equipment_aliases",
+    "topic_terms",
+    "exclude_terms",
+    "question_examples",
+    "answer",
 )
 STATUSES = {"draft", "published", "archived"}
 ARTICLE_ID = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
 
 
 def revision(row: dict[str, str]) -> str:
-    payload = json.dumps({field: row.get(field, "") for field in FIELDS}, ensure_ascii=False, sort_keys=True)
+    payload = json.dumps(
+        {field: row.get(field, "") for field in FIELDS},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def validate_article(values: dict[str, str]) -> dict[str, str]:
     article = {field: values.get(field, "").strip() for field in FIELDS}
     if not ARTICLE_ID.fullmatch(article["id"]):
-        raise ValueError("ID: латинские строчные буквы, цифры, _ или -, от 2 до 64 символов")
+        raise ValueError(
+            "ID: латинские строчные буквы, цифры, _ или -, от 2 до 64 символов"
+        )
     if article["status"] not in STATUSES:
         raise ValueError("Выберите корректный статус")
     if article["status"] == "published" and (
@@ -58,7 +68,9 @@ class ArticleStore:
                 raise ValueError("Некорректная строка базы знаний")
         return rows
 
-    def save(self, values: dict[str, str], original_id: str = "", expected_revision: str = "") -> str:
+    def save(
+        self, values: dict[str, str], original_id: str = "", expected_revision: str = ""
+    ) -> str:
         article = validate_article(values)
 
         with self._lock:
@@ -71,7 +83,9 @@ class ArticleStore:
                     raise ValueError("ID существующей статьи менять нельзя")
                 old = next(row for row in rows if row["id"] == original_id)
                 if expected_revision and revision(old) != expected_revision:
-                    raise ValueError("Статья изменилась. Обновите страницу перед сохранением")
+                    raise ValueError(
+                        "Статья изменилась. Обновите страницу перед сохранением"
+                    )
                 rows = [article if row["id"] == original_id else row for row in rows]
             else:
                 if article["id"] in ids:
@@ -81,8 +95,13 @@ class ArticleStore:
             temporary_path = None
             try:
                 with tempfile.NamedTemporaryFile(
-                    mode="w", newline="", encoding="utf-8", dir=self.path.parent,
-                    prefix=".articles-", suffix=".csv", delete=False,
+                    mode="w",
+                    newline="",
+                    encoding="utf-8",
+                    dir=self.path.parent,
+                    prefix=".articles-",
+                    suffix=".csv",
+                    delete=False,
                 ) as target:
                     temporary_path = Path(target.name)
                     writer = csv.DictWriter(target, fieldnames=FIELDS)

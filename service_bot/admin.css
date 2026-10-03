@@ -1,0 +1,146 @@
+:root {
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #18312b;
+    background: #f4f7f4;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+}
+
+header {
+    background: #123b32;
+    color: white;
+    padding: 18px 5%;
+}
+
+header a {
+    color: white;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+main {
+    max-width: 980px;
+    margin: 32px auto;
+    padding: 0 20px;
+}
+
+h1 {
+    font-size: 2rem;
+}
+
+h2 {
+    margin-top: 36px;
+}
+
+.muted {
+    color: #5e7169;
+}
+
+.bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.button,
+button {
+    background: #126c4d;
+    color: white;
+    border: 0;
+    border-radius: 9px;
+    padding: 11px 16px;
+    text-decoration: none;
+    font: inherit;
+    cursor: pointer;
+}
+
+.card {
+    background: white;
+    border: 1px solid #dbe5df;
+    border-radius: 14px;
+    padding: 20px;
+    margin: 12px 0;
+    box-shadow: 0 3px 12px #123b3209;
+}
+
+.card a {
+    color: #126c4d;
+}
+
+.badge {
+    font-size: 0.8rem;
+    background: #e5f3ec;
+    border-radius: 20px;
+    padding: 4px 9px;
+}
+
+.badge.draft {
+    background: #fff1d8;
+}
+
+.badge.archived {
+    background: #e9eceb;
+}
+
+label {
+    display: block;
+    font-weight: 650;
+    margin: 18px 0 6px;
+}
+
+input,
+textarea,
+select {
+    width: 100%;
+    border: 1px solid #b9ccc2;
+    border-radius: 8px;
+    padding: 10px;
+    font: inherit;
+    background: white;
+}
+
+textarea {
+    min-height: 90px;
+}
+
+textarea.answer {
+    min-height: 150px;
+}
+
+small {
+    display: block;
+    color: #5e7169;
+    margin-top: 5px;
+}
+
+.error {
+    background: #fff0e8;
+    border-left: 4px solid #bc5d37;
+    padding: 12px;
+    border-radius: 6px;
+}
+
+.ok {
+    background: #e5f3ec;
+    padding: 12px;
+    border-radius: 6px;
+}
+
+.question {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+footer {
+    color: #5e7169;
+    text-align: center;
+    padding: 36px;
+}

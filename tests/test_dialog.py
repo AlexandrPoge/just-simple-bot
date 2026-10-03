@@ -3,10 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from service_bot.__main__ import DialogState, process_message
 from service_bot.audit import AuditLog
+from service_bot.dialog import DialogState, process_message
 from service_bot.knowledge import CLARIFY_MODEL, FALLBACK, KnowledgeBase
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,7 +23,10 @@ class DialogTests(unittest.TestCase):
     def send(self, text, chat_id=7):
         process_message(
             {"chat": {"id": chat_id}, "text": text},
-            self.api, self.kb, self.audit, self.dialog,
+            self.api,
+            self.kb,
+            self.audit,
+            self.dialog,
         )
         return self.api.call.call_args.args[1]["text"]
 
@@ -42,9 +44,9 @@ class DialogTests(unittest.TestCase):
         self.assertEqual(self.send("КАН", chat_id=8), FALLBACK)
 
     def test_expired_context_cannot_be_used(self):
-        with patch("service_bot.__main__.time.monotonic", return_value=0):
+        with patch("service_bot.dialog.time.monotonic", return_value=0):
             self.send("Как самому обслужить станцию?")
-        with patch("service_bot.__main__.time.monotonic", return_value=10_000):
+        with patch("service_bot.dialog.time.monotonic", return_value=10_000):
             self.assertEqual(self.send("КАН Ультра"), FALLBACK)
 
     def test_database_failure_sends_fallback(self):

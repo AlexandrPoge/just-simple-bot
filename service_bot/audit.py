@@ -22,6 +22,12 @@ class AuditLog:
         self.connection.execute(
             "INSERT INTO questions (created_at, chat_id, question, status, article_id) "
             "VALUES (?, ?, ?, ?, ?)",
-            (datetime.now(timezone.utc).isoformat(), chat_id, question, result.status, result.article_id),
+            (
+                datetime.now(timezone.utc).isoformat(),
+                chat_id,
+                question,
+                result.status,
+                result.article_id,
+            ),
         )
         self.connection.commit()

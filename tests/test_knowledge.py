@@ -3,8 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from service_bot.knowledge import CLARIFY_MODEL, FALLBACK, KnowledgeBase, contains_equipment
-
+from service_bot.knowledge import (
+    CLARIFY_MODEL,
+    FALLBACK,
+    KnowledgeBase,
+    contains_equipment,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -81,23 +85,35 @@ class KnowledgeBaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "articles.csv"
             with path.open("w", newline="", encoding="utf-8") as target:
-                writer = csv.DictWriter(target, fieldnames=sorted(KnowledgeBase.REQUIRED))
+                writer = csv.DictWriter(
+                    target, fieldnames=sorted(KnowledgeBase.REQUIRED)
+                )
                 writer.writeheader()
-                writer.writerow({
-                    "id": "tver", "status": "draft", "equipment_aliases": "тверь",
-                    "topic_terms": "почист|обслуж", "exclude_terms": "",
-                    "question_examples": "Как почистить Тверь?", "answer": "Утверждённая инструкция.",
-                })
+                writer.writerow(
+                    {
+                        "id": "tver",
+                        "status": "draft",
+                        "equipment_aliases": "тверь",
+                        "topic_terms": "почист|обслуж",
+                        "exclude_terms": "",
+                        "question_examples": "Как почистить Тверь?",
+                        "answer": "Утверждённая инструкция.",
+                    }
+                )
             kb = KnowledgeBase(path)
             self.assertEqual(kb.answer("Как почистить Тверь?").answer, FALLBACK)
             with path.open("r", newline="", encoding="utf-8") as source:
                 rows = list(csv.DictReader(source))
             rows[0]["status"] = "published"
             with path.open("w", newline="", encoding="utf-8") as target:
-                writer = csv.DictWriter(target, fieldnames=sorted(KnowledgeBase.REQUIRED))
+                writer = csv.DictWriter(
+                    target, fieldnames=sorted(KnowledgeBase.REQUIRED)
+                )
                 writer.writeheader()
                 writer.writerows(rows)
-            self.assertEqual(kb.answer("Как почистить Тверь?").answer, "Утверждённая инструкция.")
+            self.assertEqual(
+                kb.answer("Как почистить Тверь?").answer, "Утверждённая инструкция."
+            )
 
 
 if __name__ == "__main__":
